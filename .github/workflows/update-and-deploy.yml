@@ -1,0 +1,79 @@
+name: Update papers and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Beijing time 10:00 and 14:00 (UTC+8)
+    - cron: '0 2,6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the site
+        uses: actions/checkout@v6
+
+      - name: Update literature data
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python scripts/update_feed.py --days 7 --out public/papers.json
+
+      - name: Save updated data
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/papers.json
+          git diff --cached --quiet || git commit -m "chore: update literature feed [skip ci]"
+          git push
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
+        run: pnpm build
+
+      - name: Prepare project-site paths
+        run: |
+          asset_dir="dist/client/${{ github.event.repository.name }}/_next"
+          if [ -d "$asset_dir" ]; then
+            mv "$asset_dir" dist/client/_next
+            rmdir "dist/client/${{ github.event.repository.name }}"
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/client
+
+      - name: Publish website
+        id: deployment
+        uses: actions/deploy-pages@v4
