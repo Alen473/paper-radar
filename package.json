@@ -1,7 +1,8 @@
 {
-  "name": "sites-project",
+  "name": "paper-radar",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.17.1",
   "engines": {
     "node": ">=22.13.0"
   },
