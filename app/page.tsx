@@ -279,7 +279,7 @@ export default function Home() {
 
       <footer>
         <div><strong>文献雷达</strong><span>为闲暇阅读留一条更短的路径。</span></div>
-        <p>文献元数据来自 Crossref / PubMed · 收藏仅保存在当前浏览器</p>
+        <p>文献元数据来自 Crossref · 收藏仅保存在当前浏览器</p>
       </footer>
     </main>
   );
