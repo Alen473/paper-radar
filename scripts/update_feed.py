@@ -13,6 +13,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from paper_topics import is_clearly_outside_biology, is_evolutionary
+
 JOURNALS = [
     ("Nature", "0028-0836"), ("Science", "0036-8075"), ("Cell", "0092-8674"),
     ("Nature Communications", "2041-1723"), ("Science Advances", "2375-2548"),
@@ -150,35 +152,61 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--out", type=Path, default=Path("public/papers.json"))
+    parser.add_argument(
+        "--classify-only", action="store_true", help="Clean and tag an existing feed without fetching."
+    )
     args = parser.parse_args()
+    if args.classify_only and not args.out.is_file():
+        parser.error("--classify-only requires an existing feed")
     existing = json.loads(args.out.read_text(encoding="utf-8")) if args.out.exists() else []
     by_doi = {paper["doi"].lower(): paper for paper in existing if paper.get("doi")}
+    existing_dois = set(by_doi)
     next_id = max((int(paper.get("id", 0)) for paper in existing), default=0) + 1
     since = (dt.date.today() - dt.timedelta(days=max(1, args.days))).isoformat()
     failures: list[str] = []
-    added = 0
-    for name, issn in JOURNALS:
+    journals = [] if args.classify_only else JOURNALS
+    for name, issn in journals:
         try:
             for paper in fetch_journal(name, issn, since):
                 key = paper["doi"].lower()
-                if key in by_doi:
-                    paper["id"] = by_doi[key].get("id", next_id)
-                    by_doi[key].update(paper)
+                current = by_doi.get(key, {})
+                if "id" in current:
+                    paper["id"] = current["id"]
                 else:
                     paper["id"] = next_id
                     next_id += 1
-                    by_doi[key] = paper
-                    added += 1
+                if not paper["abstract"] and current.get("abstract"):
+                    paper["abstract"] = current["abstract"]
+                    paper["score"], paper["reason"] = keyword_rank(paper["title"], paper["abstract"])
+                by_doi[key] = {**current, **paper}
             print(f"{name}: ok")
         except Exception as exc:
             failures.append(f"{name}: {exc}")
             print(f"{name}: failed ({exc})")
+    if len(failures) > len(JOURNALS) // 3:
+        raise RuntimeError("Too many journal feeds failed: " + "; ".join(failures))
+
+    # Apply the same rules to stored records and fetched records. Never infer
+    # that a paper is unrelated solely from a missing abstract or a low score.
+    excluded = set()
+    for doi, paper in by_doi.items():
+        title, abstract = paper["title"], paper.get("abstract") or ""
+        if is_clearly_outside_biology(title, abstract):
+            excluded.add(doi)
+        else:
+            paper["evolution"] = is_evolutionary(title, abstract)
+    for doi in excluded:
+        del by_doi[doi]
+
     papers = sorted(by_doi.values(), key=lambda paper: (int(paper.get("score", 0)), paper.get("published_date", "")), reverse=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(papers, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"Updated {len(papers)} papers; added {added}; failed journals {len(failures)}")
-    if len(failures) > len(JOURNALS) // 3:
-        raise RuntimeError("Too many journal feeds failed: " + "; ".join(failures))
+    print(
+        f"Updated {len(papers)} papers; added {len(by_doi.keys() - existing_dois)}; "
+        f"removed {len(excluded & existing_dois)} stored and skipped {len(excluded - existing_dois)} new "
+        f"non-biology records; evolution {sum(paper['evolution'] for paper in papers)}; "
+        f"failed journals {len(failures)}"
+    )
     return 0
 
 

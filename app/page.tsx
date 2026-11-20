@@ -14,9 +14,10 @@ type Paper = {
   url: string;
   score: number;
   reason: string;
+  evolution?: boolean;
 };
 
-type Topic = 'all' | 'cartilage' | 'regeneration' | 'regulation';
+type Topic = 'all' | 'cartilage' | 'regeneration' | 'regulation' | 'evolution';
 type TimeRange = 'all' | '7' | '30' | '90' | '365';
 
 const topicLabels: Record<Topic, string> = {
@@ -24,9 +25,10 @@ const topicLabels: Record<Topic, string> = {
   cartilage: '软骨发育 / 再生',
   regeneration: '组织再生',
   regulation: '基因调控',
+  evolution: '进化生物学',
 };
 
-const topicTerms: Record<Exclude<Topic, 'all'>, string[]> = {
+const topicTerms: Record<Exclude<Topic, 'all' | 'evolution'>, string[]> = {
   cartilage: [
     'cartilage', 'chondrogen', 'chondrocyte', 'chondral', 'osteochondral',
     'endochondral', 'growth plate', 'perichondrium', 'sox9', 'col2a1',
@@ -44,6 +46,7 @@ const topicTerms: Record<Exclude<Topic, 'all'>, string[]> = {
 
 function matchesTopic(paper: Paper, topic: Topic) {
   if (topic === 'all') return true;
+  if (topic === 'evolution') return paper.evolution === true;
   const haystack = `${paper.title} ${paper.abstract} ${paper.reason}`.toLowerCase();
   return topicTerms[topic].some((term) => haystack.includes(term));
 }
@@ -153,7 +156,7 @@ export default function Home() {
           <p className="eyebrow">REGENERATIVE BIOLOGY LITERATURE RADAR</p>
           <h1>文献推送</h1>
           <p className="hero-copy">
-            聚合再生生物学、软骨发育与基因调控领域的重要期刊，按照你的研究画像自动排序。
+            聚合再生生物学、软骨发育、基因调控与进化生物学文献，按研究相关度排序。
           </p>
 
           <div className="search-box">
@@ -189,6 +192,7 @@ export default function Home() {
               <button
                 key={item}
                 className={topic === item ? 'active' : ''}
+                aria-pressed={topic === item}
                 onClick={() => setTopic(item)}
               >
                 {topicLabels[item]}
