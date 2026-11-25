@@ -8,11 +8,6 @@ on:
     - cron: '0 2,6 * * *'
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -20,9 +15,9 @@ concurrency:
 jobs:
   update-and-build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pages: read
     steps:
       - name: Check out the site
         uses: actions/checkout@v6
@@ -74,6 +69,17 @@ jobs:
         with:
           path: dist/client
 
+  # Let the upload job finish before Pages looks up its artifact.
+  deploy:
+    needs: update-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Publish website
         id: deployment
         uses: actions/deploy-pages@v4
